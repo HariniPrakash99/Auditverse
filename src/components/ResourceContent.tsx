@@ -43,7 +43,10 @@ function getInitialManageItems(content: ContentItem, resources: ResourceItem[]):
   if (content.resources && content.resources.length > 0) {
     return content.resources.map((item) => ({ ...item }))
   }
-  return DEFAULT_JJ_ITEMS.map((item) => ({ ...item }))
+  if (content.id === 'jj') {
+    return DEFAULT_JJ_ITEMS.map((item) => ({ ...item }))
+  }
+  return []
 }
 
 interface FolderChildFile {
@@ -1509,11 +1512,11 @@ function ResourceContent({
                     </svg>
                   </div>
                 ))
-              ) : (
+              ) : searchTerm ? (
                 <div className="empty-resource-state">
-                  <p>{searchTerm ? <>No resources found matching &ldquo;{searchTerm}&rdquo;</> : 'No resources available.'}</p>
+                  <p>No resources found matching &ldquo;{searchTerm}&rdquo;</p>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </>
