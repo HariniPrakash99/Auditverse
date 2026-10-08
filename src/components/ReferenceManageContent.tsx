@@ -1591,18 +1591,17 @@ const ReferenceManageContent = ({
   }
 
   const handleEditSiteChange = async (siteId: string) => {
-    setEditDraft((cur) => (cur ? { ...cur, siteId, folderName: '', folderPath: '' } : cur))
-    setEditFolders([])
+    setEditDraft((cur) => (cur ? { ...cur, siteId } : cur))
     if (siteId) {
-      await triggerFlowForEditSite(siteId)
-    } else {
-      setEditLibraries([])
+      const libs = await triggerFlowForEditSite(siteId)
+      if (editDraft?.folderName) {
+        await triggerFoldersFlowForEdit(siteId, editDraft.folderName, libs)
+      }
     }
   }
 
   const handleEditLibraryChange = async (libraryVal: string) => {
-    setEditDraft((cur) => (cur ? { ...cur, folderName: libraryVal, folderPath: '' } : cur))
-    setEditFolders([])
+    setEditDraft((cur) => (cur ? { ...cur, folderName: libraryVal } : cur))
     if (editDraft?.siteId && libraryVal) {
       await triggerFoldersFlowForEdit(editDraft.siteId, libraryVal, editLibraries)
     }
@@ -1619,22 +1618,39 @@ const ReferenceManageContent = ({
     if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
     }
+
+    const resolvedSiteId =
+      item.siteId ||
+      effectiveSites.find((s) => s.name.toLowerCase().includes('data'))?.id ||
+      (effectiveSites.length > 0 ? effectiveSites[0].id : '')
+
+    const resolvedLibrary =
+      item.folderParentPath ||
+      item.folderName ||
+      (libraries.length > 0 ? (libraries[0].id || libraries[0].name) : 'Documents')
+
+    const resolvedFolderPath =
+      item.folderPath || (item.name ? `/${item.name.replace(/\s*\(\d+\)$/, '')}` : '/')
+
+    const initialEditDraft: ReferenceMasterDraft = {
+      ...item,
+      siteId: item.type === 'folder' ? resolvedSiteId : item.siteId,
+      folderName: item.type === 'folder' ? (item.folderName || resolvedLibrary) : item.folderName,
+      folderParentPath: item.type === 'folder' ? (item.folderParentPath || resolvedLibrary) : item.folderParentPath,
+      folderPath: item.type === 'folder' ? (item.folderPath || resolvedFolderPath) : item.folderPath,
+    }
+
     setEditingId(item.id ?? `draft-${index}`)
-    setEditDraft({ ...item })
+    setEditDraft(initialEditDraft)
 
     if (item.type === 'folder') {
-      const currentSite = item.siteId || ''
-      const currentLib = item.folderName || ''
+      const currentSite = resolvedSiteId
+      const currentLib = initialEditDraft.folderName || resolvedLibrary
       if (currentSite) {
         const loadedLibs = await triggerFlowForEditSite(currentSite)
         if (currentLib) {
           await triggerFoldersFlowForEdit(currentSite, currentLib, loadedLibs)
-        } else {
-          setEditFolders([])
         }
-      } else {
-        setEditLibraries([])
-        setEditFolders([])
       }
     }
   }
@@ -2119,6 +2135,9 @@ const ReferenceManageContent = ({
                               <option value="" disabled hidden>
                                 Site Address
                               </option>
+                              {editDraft?.siteId && !effectiveSites.some((s) => s.id === editDraft.siteId) && (
+                                <option value={editDraft.siteId}>{editDraft.siteId}</option>
+                              )}
                               {effectiveSites.map((site) => (
                                 <option key={site.id} value={site.id}>
                                   {site.name}
@@ -2131,17 +2150,11 @@ const ReferenceManageContent = ({
                               className={`ref-manage-edit-library-select ${editDraft?.folderName ? 'has-value' : 'is-placeholder'}`}
                               value={editDraft?.folderName ?? ''}
                               onChange={(e) => handleEditLibraryChange(e.target.value)}
-                              disabled={saving || loadingEditLibraries || !editDraft?.siteId}
+                              disabled={saving}
                               aria-label="Library"
                             >
                               <option value="" disabled hidden>
-                                {loadingEditLibraries
-                                  ? 'Loading libraries...'
-                                  : !editDraft?.siteId
-                                  ? 'Library'
-                                  : editLibraries.length === 0
-                                  ? 'No libraries found'
-                                  : 'Library'}
+                                {loadingEditLibraries ? 'Loading libraries...' : 'Library'}
                               </option>
                               {editDraft?.folderName &&
                                 !editLibraries.some(
@@ -2161,21 +2174,13 @@ const ReferenceManageContent = ({
                               className={`ref-manage-edit-folderpath-select ${editDraft?.folderPath ? 'has-value' : 'is-placeholder'}`}
                               value={editDraft?.folderPath ?? ''}
                               onChange={(e) => handleEditFolderChange(e.target.value)}
-                              disabled={saving || loadingEditFolders || !editDraft?.folderName}
+                              disabled={saving}
                               aria-label="Folder Path"
                             >
                               <option value="" disabled hidden>
-                                {loadingEditFolders
-                                  ? 'Loading folders...'
-                                  : !editDraft?.folderName
-                                  ? 'Folder Path'
-                                  : editFolders.length === 0
-                                  ? 'No folders found'
-                                  : 'Folder Path'}
+                                {loadingEditFolders ? 'Loading folders...' : 'Folder Path'}
                               </option>
-                              {editDraft?.folderName && !loadingEditFolders && (
-                                <option value="/">/ (Root Folder)</option>
-                              )}
+                              <option value="/">/ (Root Folder)</option>
                               {editDraft?.folderPath &&
                                 editDraft.folderPath !== '/' &&
                                 !editFolders.includes(editDraft.folderPath) && (
