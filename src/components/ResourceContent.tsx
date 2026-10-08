@@ -722,157 +722,163 @@ function ResourceContent({
 
         {/* 4. Manageable Items List */}
         <div className="res-list-manage">
-          {manageItems.map((item, index) => {
-            const isItemEditing = editingItemId === item.id
+          {manageItems.length === 0 ? (
+            <div className="empty-resource-state">
+              <p>No resources available.</p>
+            </div>
+          ) : (
+            manageItems.map((item, index) => {
+              const isItemEditing = editingItemId === item.id
 
-            if (isItemEditing) {
-              return (
-                <div key={item.id} className="res-manage-item-row res-manage-item-editing">
-                  <div className="res-manage-inline-edit">
-                    <input
-                      type="text"
-                      className="res-manage-inline-input"
-                      value={inlineEditTitle}
-                      onChange={(e) => {
-                        setInlineEditTitle(e.target.value)
-                        if (manageError) setManageError(null)
-                      }}
-                      placeholder="Item Title"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveInlineEdit(item.id)
-                        if (e.key === 'Escape') handleCancelInlineEdit()
-                      }}
-                    />
-                    <input
-                      type="text"
-                      className="res-manage-inline-input"
-                      value={inlineEditUrl}
-                      onChange={(e) => {
-                        setInlineEditUrl(e.target.value)
-                        if (manageError) setManageError(null)
-                      }}
-                      placeholder="Link URL"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSaveInlineEdit(item.id)
-                        if (e.key === 'Escape') handleCancelInlineEdit()
-                      }}
-                    />
-                    <div className="res-manage-inline-actions">
-                      <button
-                        type="button"
-                        className="res-manage-inline-btn res-manage-inline-save"
-                        onClick={() => handleSaveInlineEdit(item.id)}
-                        title="Save"
-                        aria-label="Save"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-check preview-icon"
+              if (isItemEditing) {
+                return (
+                  <div key={item.id} className="res-manage-item-row res-manage-item-editing">
+                    <div className="res-manage-inline-edit">
+                      <input
+                        type="text"
+                        className="res-manage-inline-input"
+                        value={inlineEditTitle}
+                        onChange={(e) => {
+                          setInlineEditTitle(e.target.value)
+                          if (manageError) setManageError(null)
+                        }}
+                        placeholder="Item Title"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit(item.id)
+                          if (e.key === 'Escape') handleCancelInlineEdit()
+                        }}
+                      />
+                      <input
+                        type="text"
+                        className="res-manage-inline-input"
+                        value={inlineEditUrl}
+                        onChange={(e) => {
+                          setInlineEditUrl(e.target.value)
+                          if (manageError) setManageError(null)
+                        }}
+                        placeholder="Link URL"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit(item.id)
+                          if (e.key === 'Escape') handleCancelInlineEdit()
+                        }}
+                      />
+                      <div className="res-manage-inline-actions">
+                        <button
+                          type="button"
+                          className="res-manage-inline-btn res-manage-inline-save"
+                          onClick={() => handleSaveInlineEdit(item.id)}
+                          title="Save"
+                          aria-label="Save"
                         >
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className="res-manage-inline-btn res-manage-inline-cancel"
-                        onClick={handleCancelInlineEdit}
-                        title="Cancel"
-                        aria-label="Cancel"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="lucide lucide-x preview-icon"
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="lucide lucide-check preview-icon"
+                          >
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="res-manage-inline-btn res-manage-inline-cancel"
+                          onClick={handleCancelInlineEdit}
+                          title="Cancel"
+                          aria-label="Cancel"
                         >
-                          <path d="M18 6 6 18" />
-                          <path d="m6 6 12 12" />
-                        </svg>
-                      </button>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="lucide lucide-x preview-icon"
+                          >
+                            <path d="M18 6 6 18" />
+                            <path d="m6 6 12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div key={item.id} className="res-manage-item-row">
+                  {/* Left Section (Icon + Label) */}
+                  <div className="res-manage-item-left">
+                    <span className="res-manage-link-chain-icon" aria-hidden="true">
+                      <Icon name="link" size={14} />
+                    </span>
+                    <span className="res-manage-item-name" title={item.name}>
+                      {item.name}
+                    </span>
+                  </div>
+
+                  {/* Right Action Toolbar */}
+                  <div className="res-manage-actions-toolbar">
+                    {/* Edit Action */}
+                    <button
+                      type="button"
+                      className="res-manage-action-icon-btn edit"
+                      onClick={() => handleStartInlineEdit(item)}
+                      aria-label={`Edit ${item.name}`}
+                      title="Edit"
+                    >
+                      <Icon name="edit" size={15} className="lucide-pencil" />
+                    </button>
+
+                    {/* Move Up Action */}
+                    <button
+                      type="button"
+                      className="res-manage-action-icon-btn move-up"
+                      onClick={() => handleMoveItem(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${item.name} up`}
+                      title="Move up"
+                    >
+                      <Icon name="arrow-up" size={15} className="lucide-arrow-up" />
+                    </button>
+
+                    {/* Move Down Action */}
+                    <button
+                      type="button"
+                      className="res-manage-action-icon-btn move-down"
+                      onClick={() => handleMoveItem(index, 1)}
+                      disabled={index === manageItems.length - 1}
+                      aria-label={`Move ${item.name} down`}
+                      title="Move down"
+                    >
+                      <Icon name="arrow-down" size={15} className="lucide-arrow-down" />
+                    </button>
+
+                    {/* Delete Action */}
+                    <button
+                      type="button"
+                      className="res-manage-action-icon-btn delete"
+                      onClick={() => handleRequestDeleteItem(item)}
+                      aria-label={`Delete ${item.name}`}
+                      title="Delete"
+                    >
+                      <Icon name="trash" size={15} className="lucide-trash-2" />
+                    </button>
                   </div>
                 </div>
               )
-            }
-
-            return (
-              <div key={item.id} className="res-manage-item-row">
-                {/* Left Section (Icon + Label) */}
-                <div className="res-manage-item-left">
-                  <span className="res-manage-link-chain-icon" aria-hidden="true">
-                    <Icon name="link" size={14} />
-                  </span>
-                  <span className="res-manage-item-name" title={item.name}>
-                    {item.name}
-                  </span>
-                </div>
-
-                {/* Right Action Toolbar */}
-                <div className="res-manage-actions-toolbar">
-                  {/* Edit Action */}
-                  <button
-                    type="button"
-                    className="res-manage-action-icon-btn edit"
-                    onClick={() => handleStartInlineEdit(item)}
-                    aria-label={`Edit ${item.name}`}
-                    title="Edit"
-                  >
-                    <Icon name="edit" size={15} className="lucide-pencil" />
-                  </button>
-
-                  {/* Move Up Action */}
-                  <button
-                    type="button"
-                    className="res-manage-action-icon-btn move-up"
-                    onClick={() => handleMoveItem(index, -1)}
-                    disabled={index === 0}
-                    aria-label={`Move ${item.name} up`}
-                    title="Move up"
-                  >
-                    <Icon name="arrow-up" size={15} className="lucide-arrow-up" />
-                  </button>
-
-                  {/* Move Down Action */}
-                  <button
-                    type="button"
-                    className="res-manage-action-icon-btn move-down"
-                    onClick={() => handleMoveItem(index, 1)}
-                    disabled={index === manageItems.length - 1}
-                    aria-label={`Move ${item.name} down`}
-                    title="Move down"
-                  >
-                    <Icon name="arrow-down" size={15} className="lucide-arrow-down" />
-                  </button>
-
-                  {/* Delete Action */}
-                  <button
-                    type="button"
-                    className="res-manage-action-icon-btn delete"
-                    onClick={() => handleRequestDeleteItem(item)}
-                    aria-label={`Delete ${item.name}`}
-                    title="Delete"
-                  >
-                    <Icon name="trash" size={15} className="lucide-trash-2" />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+            })
+          )}
         </div>
 
         {/* Delete Confirmation Modal */}
@@ -1512,11 +1518,11 @@ function ResourceContent({
                     </svg>
                   </div>
                 ))
-              ) : searchTerm ? (
+              ) : (
                 <div className="empty-resource-state">
-                  <p>No resources found matching &ldquo;{searchTerm}&rdquo;</p>
+                  <p>{searchTerm ? <>No resources found matching &ldquo;{searchTerm}&rdquo;</> : 'No resources available.'}</p>
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </>
