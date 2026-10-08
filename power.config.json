@@ -1,0 +1,186 @@
+{
+  "version": "1.0",
+  "appId": "44fb1d06-672e-40e2-b82f-a2bf387522f1",
+  "appDisplayName": "Auditverse Reference App",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "b8461fbf-240f-e19c-b8fe-847915803ed8",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "c600e4a4-c63e-47e9-ae78-7f3215e1105d": {
+      "id": "/providers/microsoft.powerapps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    },
+    "4cfe6abe-d42b-41eb-bcd0-528ab2adb5db": {
+      "id": "/providers/microsoft.powerapps/apis/shared_office365",
+      "displayName": "Office 365 Outlook",
+      "authenticationType": "oauthDelegated",
+      "sharedConnectionId": "/providers/Microsoft.PowerApps/apis/shared_office365/connections/shared-office365-3f12c586-e8e1-4c43-ace3-d200cfedc27f",
+      "xrmConnectionReferenceLogicalName": "ha_sharedoffice365_356fc"
+    },
+    "20601078-5ce6-4261-9b54-b10c27395d90": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "getsharepointlibraries"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "df2f113e-afc0-f111-b377-7c1e520e2b9b",
+        "workflowDisplayName": "GetSharePointLibraries",
+        "workflowName": "48c0801b-9d73-a304-0523-6230b74bbc5d"
+      }
+    },
+    "getsharepointlibraries": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "getsharepointlibraries"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "df2f113e-afc0-f111-b377-7c1e520e2b9b",
+        "workflowDisplayName": "GetSharePointLibraries",
+        "workflowName": "48c0801b-9d73-a304-0523-6230b74bbc5d"
+      }
+    },
+    "af797f2f-c87f-49ed-999a-b68fd0a481e3": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "getsharepointfolders"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "333d1bbc-35c1-f111-b377-7c1e520e2b9b",
+        "workflowDisplayName": "GetSharePointFolders",
+        "workflowName": "a4022a97-b87f-e0a1-d69e-5067d6eb3b64",
+        "dependencies": {
+          "shared_sharepointonline": "c600e4a4-c63e-47e9-ae78-7f3215e1105d",
+          "shared_office365": "4cfe6abe-d42b-41eb-bcd0-528ab2adb5db"
+        }
+      }
+    },
+    "getsharepointfolders": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "getsharepointfolders"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "333d1bbc-35c1-f111-b377-7c1e520e2b9b",
+        "workflowDisplayName": "GetSharePointFolders",
+        "workflowName": "a4022a97-b87f-e0a1-d69e-5067d6eb3b64",
+        "dependencies": {
+          "shared_sharepointonline": "c600e4a4-c63e-47e9-ae78-7f3215e1105d",
+          "shared_office365": "4cfe6abe-d42b-41eb-bcd0-528ab2adb5db"
+        }
+      }
+    },
+    "b0c8b2cc-d581-410f-b50b-ab5097c59083": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_azuread",
+      "displayName": "Microsoft Entra ID",
+      "dataSources": [
+        "azuread"
+      ],
+      "authenticationType": "EntraOAuth",
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "ha_MicrosoftEntra"
+    },
+    "f9cc9dcd-35bf-438a-bdda-7b69e96080a1": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_azuread",
+      "displayName": "Microsoft Entra ID",
+      "dataSources": [
+        "azuread"
+      ],
+      "authenticationType": "EntraOAuth",
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "ha_MicrosoftEntra"
+    },
+    "e1991965-64f5-4b98-b8c2-14dd07ff4d9a": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_azuread",
+      "displayName": "Microsoft Entra ID",
+      "dataSources": [
+        "azuread"
+      ],
+      "authenticationType": "EntraOAuth",
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "ha_MicrosoftEntra"
+    },
+    "azuread": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_azuread",
+      "displayName": "Microsoft Entra ID",
+      "dataSources": [
+        "azuread"
+      ],
+      "authenticationType": "EntraOAuth",
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "ha_MicrosoftEntra"
+    }
+  },
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "qlcategories": {
+          "entitySetName": "ha_qlcategorieses",
+          "logicalName": "ha_qlcategories",
+          "isHidden": false
+        },
+        "qlsubcategories": {
+          "entitySetName": "ha_qlsubcategorieses",
+          "logicalName": "ha_qlsubcategories",
+          "isHidden": false
+        },
+        "qlmasters": {
+          "entitySetName": "ha_qlmasterses",
+          "logicalName": "ha_qlmasters",
+          "isHidden": false
+        },
+        "refcategories": {
+          "entitySetName": "ha_refcategorieses",
+          "logicalName": "ha_refcategories",
+          "isHidden": false
+        },
+        "refsubcategories": {
+          "entitySetName": "ha_refsubcategorieses",
+          "logicalName": "ha_refsubcategories",
+          "isHidden": false
+        },
+        "refmasters": {
+          "entitySetName": "ha_refmasterses",
+          "logicalName": "ha_refmasters",
+          "isHidden": false
+        },
+        "refsites": {
+          "entitySetName": "ha_refsiteses",
+          "logicalName": "ha_refsites",
+          "isHidden": false
+        },
+        "refitems": {
+          "entitySetName": "ha_refitemses",
+          "logicalName": "ha_refitems",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  },
+  "environmentVariables": {
+    "envVarAdmin": {
+      "schemaName": "ha_envVarAdmin",
+      "displayName": "envVarAdmin",
+      "value": "b0c8b2cc-d581-410f-b50b-ab5097c59083"
+    },
+    "enVarContentManager": {
+      "schemaName": "ha_envVarContentManager",
+      "displayName": "envVarContentManager",
+      "value": "f9cc9dcd-35bf-438a-bdda-7b69e96080a1"
+    },
+    "enVarUser": {
+      "schemaName": "ha_envVarUser",
+      "displayName": "envVarUser",
+      "value": "e1991965-64f5-4b98-b8c2-14dd07ff4d9a"
+    }
+  }
+}
