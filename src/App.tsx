@@ -3247,11 +3247,14 @@ function App() {
 
 				setManageSection(null)
 				setManageLevel(null)
+				setSuccessModalCategoryName('References')
+				setShowSuccessModal(true)
 			} catch (caughtError) {
 				console.error(
 					'REFERENCE CATEGORY SAVE ERROR:',
 					caughtError,
 				)
+				throw caughtError
 			}
 		}
 	}
@@ -3541,6 +3544,8 @@ function App() {
 		setManageCategoryId(null)
 		setManageCategory(null)
 		setManageLevel(null)
+		setSuccessModalCategoryName(manageCategory || 'Category')
+		setShowSuccessModal(true)
 	}
 
 	/*

@@ -284,116 +284,102 @@ export function useReferences(): ReferencesResult {
         setSaving(true)
         setError(null)
 
-        const cleanedCategories =
-          draftCategories.map(
-            (category) => ({
-              id: category.id,
-              name: category.name.trim(),
-            }),
-          )
+        const isGuid = (val: string | null | undefined): boolean =>
+          Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+
+        const cleanedCategories = draftCategories.map((category) => ({
+          id: category.id,
+          name: category.name.trim(),
+        }))
 
         const seenNames = new Set<string>()
 
         for (const category of cleanedCategories) {
           if (!category.name) {
-            throw new Error(
-              'Category name cannot be blank.',
-            )
+            throw new Error('Category name cannot be blank.')
           }
 
-          const normalized =
-            normalizeValue(
-              category.name,
-            )
+          const normalized = normalizeValue(category.name)
 
           if (seenNames.has(normalized)) {
-            throw new Error(
-              `Duplicate category name: "${category.name}".`,
-            )
+            throw new Error(`Duplicate category name: "${category.name}".`)
           }
 
           seenNames.add(normalized)
         }
 
-        const draftExistingIds =
-          new Set(
-            cleanedCategories
-              .map(
-                (category) =>
-                  category.id,
-              )
-              .filter(
-                (
-                  id,
-                ): id is string =>
-                  Boolean(id),
-              ),
+        // Map draft categories to real Dataverse GUIDs if draft had static ID
+        const resolvedDrafts = cleanedCategories.map((draft) => {
+          if (isGuid(draft.id)) {
+            return draft
+          }
+          const matchedOriginal = originalCategories.find(
+            (orig) =>
+              (draft.id && orig.id === draft.id) ||
+              orig.name.trim().toLowerCase() === draft.name.trim().toLowerCase() ||
+              normalizeValue(orig.name) === normalizeValue(draft.name),
           )
+          return {
+            id: matchedOriginal?.id || null,
+            name: draft.name,
+          }
+        })
 
-        for (
-          const originalCategory
-          of originalCategories
-        ) {
-          if (
-            !draftExistingIds.has(
-              originalCategory.id,
-            )
-          ) {
-            if (
-              originalCategory
-                .subcategories
-                .length > 0
-            ) {
-              throw new Error(
-                `Cannot delete "${originalCategory.name}" while subcategories exist.`,
-              )
+        const resolvedExistingIds = new Set(
+          resolvedDrafts.map((d) => d.id).filter((id): id is string => Boolean(id)),
+        )
+
+        // 1. DELETE removed categories in Dataverse (with cascade delete for subcategories and masters)
+        for (const originalCategory of originalCategories) {
+          if (isGuid(originalCategory.id) && !resolvedExistingIds.has(originalCategory.id)) {
+            try {
+              for (const sub of originalCategory.subcategories) {
+                if (isGuid(sub.id)) {
+                  for (const master of sub.items) {
+                    if (isGuid(master.id)) {
+                      try {
+                        await Ha_refmastersesService.delete(master.id)
+                      } catch (mErr) {
+                        console.warn('Failed to delete master during category cascade:', mErr)
+                      }
+                    }
+                  }
+                  try {
+                    await Ha_refsubcategoriesesService.delete(sub.id)
+                  } catch (sErr) {
+                    console.warn('Failed to delete subcategory during category cascade:', sErr)
+                  }
+                }
+              }
+              await Ha_refcategoriesesService.delete(originalCategory.id)
+            } catch (delErr) {
+              console.error('Failed to delete reference category:', originalCategory.id, delErr)
             }
-
-            await Ha_refcategoriesesService.delete(
-              originalCategory.id,
-            )
           }
         }
 
-        for (
-          let index = 0;
-          index <
-          cleanedCategories.length;
-          index++
-        ) {
-          const draftCategory =
-            cleanedCategories[index]
+        // 2. CREATE or UPDATE categories in Dataverse
+        for (let index = 0; index < resolvedDrafts.length; index++) {
+          const draftCategory = resolvedDrafts[index]
 
-          if (draftCategory.id) {
-            await Ha_refcategoriesesService.update(
-              draftCategory.id,
-              {
-                ha_name:
-                  draftCategory.name,
-                ha_sortorder:
-                  index + 1,
-              } as any,
-            )
+          if (draftCategory.id && isGuid(draftCategory.id)) {
+            await Ha_refcategoriesesService.update(draftCategory.id, {
+              ha_name: draftCategory.name,
+              ha_sortorder: index + 1,
+            } as any)
           } else {
-            await Ha_refcategoriesesService.create(
-              {
-                ha_name:
-                  draftCategory.name,
-                ha_sortorder:
-                  index + 1,
-                statecode: 0,
-                statuscode: 1,
-              } as any,
-            )
+            await Ha_refcategoriesesService.create({
+              ha_name: draftCategory.name,
+              ha_sortorder: index + 1,
+              statecode: 0,
+              statuscode: 1,
+            } as any)
           }
         }
 
         await loadReferences()
       } catch (caughtError) {
-        console.error(
-          'REFERENCE CATEGORY SAVE ERROR:',
-          caughtError,
-        )
+        console.error('REFERENCE CATEGORY SAVE ERROR:', caughtError)
 
         const message =
           caughtError instanceof Error
@@ -421,6 +407,24 @@ export function useReferences(): ReferencesResult {
           setSaving(true)
           setError(null)
 
+          const isGuid = (val: string | null | undefined): boolean =>
+            Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+
+          let targetCategoryId = category.id
+          if (!isGuid(targetCategoryId)) {
+            const catResult = await Ha_refcategoriesesService.getAll()
+            const allCats = catResult.data ?? []
+            const matchingCat = allCats.find(
+              (c: any) =>
+                c.statecode !== 1 &&
+                (c.ha_name?.toLowerCase().trim() === category.name.toLowerCase().trim() ||
+                  normalizeValue(c.ha_name) === normalizeValue(category.name)),
+            )
+            if (matchingCat?.ha_refcategoriesid) {
+              targetCategoryId = matchingCat.ha_refcategoriesid
+            }
+          }
+
           const cleanedSubcategories =
             draftSubcategories.map(
               (subcategory) => ({
@@ -433,8 +437,6 @@ export function useReferences(): ReferencesResult {
             )
 
           const seenNames =
-            new Set<string>()
-          const seenDescriptions =
             new Set<string>()
 
           for (
@@ -453,87 +455,82 @@ export function useReferences(): ReferencesResult {
               )
 
             if (
-              seenNames.has(normalized)
+              seenNames.has(
+                normalized,
+              )
             ) {
               throw new Error(
                 `Duplicate subcategory name: "${subcategory.name}".`,
               )
             }
 
-            seenNames.add(normalized)
-
-            if (subcategory.description) {
-              const normalizedDesc =
-                normalizeValue(
-                  subcategory.description,
-                )
-              if (normalizedDesc) {
-                if (
-                  seenDescriptions.has(
-                    normalizedDesc,
-                  )
-                ) {
-                  throw new Error(
-                    `Duplicate subcategory description: "${subcategory.description}".`,
-                  )
-                }
-                seenDescriptions.add(
-                  normalizedDesc,
-                )
-              }
-            }
+            seenNames.add(
+              normalized,
+            )
           }
 
-          const draftExistingIds =
-            new Set(
-              cleanedSubcategories
-                .map(
-                  (subcategory) =>
-                    subcategory.id,
-                )
-                .filter(
-                  (
-                    id,
-                  ): id is string =>
-                    Boolean(id),
-                ),
+          // Resolve IDs to real GUIDs if draft had static ID
+          const resolvedDraftSubs = cleanedSubcategories.map((draft) => {
+            if (isGuid(draft.id)) return draft
+            const matchedOrig = category.subcategories.find(
+              (orig) =>
+                (draft.id && orig.id === draft.id) ||
+                orig.name.trim().toLowerCase() === draft.name.trim().toLowerCase() ||
+                normalizeValue(orig.name) === normalizeValue(draft.name),
             )
+            return {
+              id: matchedOrig?.id || null,
+              name: draft.name,
+              description: draft.description,
+            }
+          })
 
+          const resolvedExistingSubIds = new Set(
+            resolvedDraftSubs.map((s) => s.id).filter((id): id is string => Boolean(id)),
+          )
+
+          // 1. DELETE removed subcategories (cascade deleting their masters first)
           for (
             const originalSubcategory
             of category.subcategories
           ) {
             if (
-              !draftExistingIds.has(
+              isGuid(originalSubcategory.id) &&
+              !resolvedExistingSubIds.has(
                 originalSubcategory.id,
               )
             ) {
-              if (
-                originalSubcategory.items
-                  .length > 0
-              ) {
-                throw new Error(
-                  `Cannot delete "${originalSubcategory.name}" while Reference resources exist. Delete the resources first.`,
+              try {
+                for (const item of originalSubcategory.items) {
+                  if (isGuid(item.id)) {
+                    try {
+                      await Ha_refmastersesService.delete(item.id)
+                    } catch (mErr) {
+                      console.warn('Failed to delete master during subcategory deletion:', mErr)
+                    }
+                  }
+                }
+                await Ha_refsubcategoriesesService.delete(
+                  originalSubcategory.id,
                 )
+              } catch (sErr) {
+                console.error('Failed to delete subcategory:', originalSubcategory.id, sErr)
               }
-
-              await Ha_refsubcategoriesesService.delete(
-                originalSubcategory.id,
-              )
             }
           }
 
+          // 2. CREATE or UPDATE subcategories in Dataverse
           for (
             let index = 0;
             index <
-            cleanedSubcategories.length;
+            resolvedDraftSubs.length;
             index++
           ) {
             const draftSubcategory =
-              cleanedSubcategories[index]
+              resolvedDraftSubs[index]
 
             if (
-              draftSubcategory.id
+              draftSubcategory.id && isGuid(draftSubcategory.id)
             ) {
               await Ha_refsubcategoriesesService.update(
                 draftSubcategory.id,
@@ -547,22 +544,22 @@ export function useReferences(): ReferencesResult {
                 } as any,
               )
             } else {
-              await Ha_refsubcategoriesesService.create(
-                {
-                  ha_name:
-                    draftSubcategory.name,
-                  ha_description:
-                    draftSubcategory.description !== undefined && draftSubcategory.description !== null
-                      ? draftSubcategory.description
-                      : '',
-                  ha_sortorder:
-                    index + 1,
-                  statecode: 0,
-                  statuscode: 1,
-                  'ha_Category@odata.bind':
-                    `/ha_refcategorieses(${category.id})`,
-                } as any,
-              )
+              const createPayload: any = {
+                ha_name:
+                  draftSubcategory.name,
+                ha_description:
+                  draftSubcategory.description !== undefined && draftSubcategory.description !== null
+                    ? draftSubcategory.description
+                    : '',
+                ha_sortorder:
+                  index + 1,
+                statecode: 0,
+                statuscode: 1,
+              }
+              if (isGuid(targetCategoryId)) {
+                createPayload['ha_Category@odata.bind'] = `/ha_refcategorieses(${targetCategoryId})`
+              }
+              await Ha_refsubcategoriesesService.create(createPayload)
             }
           }
 
@@ -598,13 +595,54 @@ export function useReferences(): ReferencesResult {
         setSaving(true)
         setError(null)
 
+        const isGuid = (val: string | null | undefined): boolean =>
+          Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+
         const targetTitle = (metadata?.title ?? subcategory.name).trim()
         const targetDescription = (metadata?.description ?? subcategory.description ?? '').trim()
 
-        if (subcategory.id && (targetTitle || targetDescription)) {
+        let resolvedSubcategoryId = subcategory.id
+        if (!isGuid(resolvedSubcategoryId)) {
+          try {
+            const subResult = await Ha_refsubcategoriesesService.getAll()
+            const allSubs = subResult.data ?? []
+            const matchingSub = allSubs.find(
+              (s: any) =>
+                s.statecode !== 1 &&
+                (s.ha_name?.toLowerCase().trim() === subcategory.name.toLowerCase().trim() ||
+                  normalizeValue(s.ha_name) === normalizeValue(subcategory.name) ||
+                  s.ha_name?.toLowerCase().includes('overview')),
+            )
+            if (matchingSub?.ha_refsubcategoriesid) {
+              resolvedSubcategoryId = matchingSub.ha_refsubcategoriesid
+            } else {
+              // Create subcategory in Dataverse if missing!
+              const catResult = await Ha_refcategoriesesService.getAll()
+              const allCats = catResult.data ?? []
+              const firstCatId = allCats[0]?.ha_refcategoriesid
+              const createdSub = await Ha_refsubcategoriesesService.create({
+                ha_name: targetTitle || subcategory.name,
+                ha_description: targetDescription || '',
+                ha_sortorder: 1,
+                statecode: 0,
+                statuscode: 1,
+                ...(firstCatId ? { 'ha_Category@odata.bind': `/ha_refcategorieses(${firstCatId})` } : {}),
+              } as any)
+              resolvedSubcategoryId =
+                (createdSub as any)?.data?.ha_refsubcategoriesid ||
+                (createdSub as any)?.ha_refsubcategoriesid ||
+                (createdSub as any)?.id
+            }
+          } catch (lookupErr) {
+            console.error('Failed to lookup or create subcategory in Dataverse:', lookupErr)
+          }
+        }
+
+        // Update subcategory title & description in Dataverse
+        if (isGuid(resolvedSubcategoryId) && (targetTitle || targetDescription)) {
           try {
             await Ha_refsubcategoriesesService.update(
-              subcategory.id,
+              resolvedSubcategoryId,
               {
                 ha_name: targetTitle || subcategory.name,
                 ha_description: targetDescription,
@@ -615,103 +653,46 @@ export function useReferences(): ReferencesResult {
           }
         }
 
-        const cleanedDrafts =
-          drafts.map((draft) => ({
-            ...draft,
-            name: draft.name.trim(),
-            link: draft.link.trim(),
-            folderName:
-              draft.folderName.trim(),
-            folderParentPath:
-              draft.folderParentPath.trim(),
-            folderPath:
-              draft.folderPath.trim(),
-          }))
+        const cleanedDrafts = drafts.map((draft) => ({
+          ...draft,
+          name: draft.name.trim(),
+          link: draft.link.trim(),
+          folderName: draft.folderName.trim(),
+          folderParentPath: draft.folderParentPath.trim(),
+          folderPath: draft.folderPath.trim(),
+        }))
 
-        const seenNames =
-          new Set<string>()
+        const seenNames = new Set<string>()
+        const seenLinks = new Set<string>()
 
-        const seenLinks =
-          new Set<string>()
-
-        for (
-          const draft of cleanedDrafts
-        ) {
+        for (const draft of cleanedDrafts) {
           if (!draft.name) {
-            throw new Error(
-              'Folder/Link name cannot be blank.',
-            )
+            throw new Error('Folder/Link name cannot be blank.')
           }
-
-          const normalizedName =
-            normalizeValue(
-              draft.name,
-            )
-
-          if (
-            seenNames.has(
-              normalizedName,
-            )
-          ) {
-            throw new Error(
-              `Duplicate resource name: "${draft.name}".`,
-            )
+          const normalizedName = normalizeValue(draft.name)
+          if (seenNames.has(normalizedName)) {
+            throw new Error(`Duplicate resource name: "${draft.name}".`)
           }
+          seenNames.add(normalizedName)
 
-          seenNames.add(
-            normalizedName,
-          )
-
-          if (
-            draft.type === 'link'
-          ) {
+          if (draft.type === 'link') {
             if (!draft.link) {
-              throw new Error(
-                `Link URL is required for "${draft.name}".`,
-              )
+              throw new Error(`Link URL is required for "${draft.name}".`)
             }
-
-            if (
-              !/^https:\/\//i.test(
-                draft.link,
-              )
-            ) {
-              throw new Error(
-                `Link URL must use HTTPS for "${draft.name}".`,
-              )
+            if (!/^https?:\/\//i.test(draft.link)) {
+              throw new Error(`Link URL must use HTTPS for "${draft.name}".`)
             }
-
-            const normalizedLink =
-              draft.link.toLowerCase()
-
-            if (
-              seenLinks.has(
-                normalizedLink,
-              )
-            ) {
-              throw new Error(
-                `Duplicate link URL: "${draft.link}".`,
-              )
+            const normalizedLink = draft.link.toLowerCase()
+            if (seenLinks.has(normalizedLink)) {
+              throw new Error(`Duplicate link URL: "${draft.link}".`)
             }
-
-            seenLinks.add(
-              normalizedLink,
-            )
+            seenLinks.add(normalizedLink)
           }
 
-          if (
-            draft.type ===
-            'folder' &&
-            !draft.folderName
-          ) {
-            throw new Error(
-              `Library Name is required for "${draft.name}".`,
-            )
+          if (draft.type === 'folder' && !draft.folderName) {
+            throw new Error(`Library Name is required for "${draft.name}".`)
           }
         }
-
-        const isGuid = (val: string | null | undefined): boolean =>
-          Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
 
         const originalMasterIds = new Set(
           subcategory.items
@@ -725,6 +706,7 @@ export function useReferences(): ReferencesResult {
             .filter((id): id is string => isGuid(id)),
         )
 
+        // 1. DELETE removed masters from Dataverse
         for (const originalMaster of subcategory.items) {
           if (
             isGuid(originalMaster.id) &&
@@ -735,25 +717,6 @@ export function useReferences(): ReferencesResult {
             } catch (delErr) {
               console.warn('Failed to delete master:', originalMaster.id, delErr)
             }
-          }
-        }
-
-        let resolvedSubcategoryId = subcategory.id
-        if (!isGuid(resolvedSubcategoryId)) {
-          try {
-            const subResult = await Ha_refsubcategoriesesService.getAll()
-            const allSubs = subResult.data ?? []
-            const matchingSub = allSubs.find(
-              (s: any) =>
-                s.statecode !== 1 &&
-                (s.ha_name?.toLowerCase().trim() === subcategory.name.toLowerCase().trim() ||
-                  s.ha_name?.toLowerCase().includes('overview')),
-            )
-            if (matchingSub?.ha_refsubcategoriesid) {
-              resolvedSubcategoryId = matchingSub.ha_refsubcategoriesid
-            }
-          } catch (lookupErr) {
-            console.error('Failed to lookup subcategory by name in Dataverse:', lookupErr)
           }
         }
 
@@ -773,55 +736,23 @@ export function useReferences(): ReferencesResult {
           return !originalMasterIds.has(draftItem.id)
         }
 
-        for (
-          let index = 0;
-          index <
-          cleanedDrafts.length;
-          index++
-        ) {
-          const draft =
-            cleanedDrafts[index]
+        // 2. CREATE or UPDATE masters in Dataverse
+        for (let index = 0; index < cleanedDrafts.length; index++) {
+          const draft = cleanedDrafts[index]
 
-          const payload: any = {
+          const commonFields: any = {
             ha_name: draft.name,
-            ha_type:
-              draft.type === 'folder'
-                ? FOLDER_TYPE
-                : LINK_TYPE,
-            ha_sortorder:
-              index + 1,
+            ha_type: draft.type === 'folder' ? FOLDER_TYPE : LINK_TYPE,
+            ha_sortorder: index + 1,
             statecode: 0,
             statuscode: 1,
+            ha_link: draft.type === 'folder' ? '' : draft.link,
+            ha_foldername: draft.type === 'folder' ? draft.folderName : '',
+            ha_folderparentpath: draft.type === 'folder' ? draft.folderParentPath : '',
+            ha_folderpath: draft.type === 'folder' ? draft.folderPath : '',
           }
 
-          if (isGuid(resolvedSubcategoryId)) {
-            payload['ha_SubCategory@odata.bind'] =
-              `/ha_refsubcategorieses(${resolvedSubcategoryId})`
-          }
-
-          if (
-            draft.type === 'folder'
-          ) {
-            payload.ha_foldername =
-              draft.folderName
-
-            payload.ha_folderparentpath =
-              draft.folderParentPath
-
-            payload.ha_folderpath =
-              draft.folderPath
-
-            payload.ha_link = ''
-          } else {
-            payload.ha_link =
-              draft.link
-
-            payload.ha_foldername = ''
-            payload.ha_folderparentpath =
-              ''
-            payload.ha_folderpath = ''
-          }
-
+          let resolvedSiteId = ''
           if (draft.siteId) {
             const realSite = sites.find(
               (s) =>
@@ -831,46 +762,43 @@ export function useReferences(): ReferencesResult {
                   (s.name.toLowerCase().includes('datasolutions') ||
                     s.url.toLowerCase().includes('datasolutions'))),
             )
-            const resolvedSiteId = realSite?.id || draft.siteId
-
-            if (isGuid(resolvedSiteId)) {
-              payload['ha_Site@odata.bind'] =
-                `/ha_refsiteses(${resolvedSiteId})`
-            }
+            resolvedSiteId = realSite?.id || (isGuid(draft.siteId) ? draft.siteId : '')
           }
 
           if (!isNewMaster(draft) && draft.id) {
-            await Ha_refmastersesService.update(
-              draft.id,
-              payload,
-            )
+            // Update existing record: DO NOT send @odata.bind for ha_SubCategory!
+            const updatePayload: any = { ...commonFields }
+            if (isGuid(resolvedSiteId)) {
+              updatePayload['ha_Site@odata.bind'] = `/ha_refsiteses(${resolvedSiteId})`
+            }
+            await Ha_refmastersesService.update(draft.id, updatePayload)
           } else {
-            await Ha_refmastersesService.create(
-              payload,
-            )
+            // Create new record: attach subcategory and site bindings
+            const createPayload: any = { ...commonFields }
+            if (isGuid(resolvedSubcategoryId)) {
+              createPayload['ha_SubCategory@odata.bind'] = `/ha_refsubcategorieses(${resolvedSubcategoryId})`
+            }
+            if (isGuid(resolvedSiteId)) {
+              createPayload['ha_Site@odata.bind'] = `/ha_refsiteses(${resolvedSiteId})`
+            }
+            await Ha_refmastersesService.create(createPayload)
           }
         }
 
         await loadReferences()
       } catch (caughtError) {
-        console.error(
-          'REFERENCE MASTER SAVE ERROR:',
-          caughtError,
-        )
-
+        console.error('REFERENCE MASTER SAVE ERROR:', caughtError)
         const message =
           caughtError instanceof Error
             ? caughtError.message
             : 'Unable to save Reference resources.'
-
         setError(message)
-
         throw caughtError
       } finally {
         setSaving(false)
       }
     },
-    [loadReferences],
+    [loadReferences, sites],
   )
 
   useEffect(() => {
