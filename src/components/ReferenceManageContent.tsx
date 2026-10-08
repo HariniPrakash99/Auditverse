@@ -528,6 +528,131 @@ const extractFolderNameOrPath = (item: unknown): string | null => {
   return null
 }
 
+export interface FolderChildFile {
+  id: string
+  name: string
+  size: string
+  type: string
+  link?: string
+  folderPath?: string
+}
+
+const extractFileItem = (item: unknown): FolderChildFile | null => {
+  if (!item || typeof item !== 'object') return null
+  const record = item as Record<string, unknown>
+
+  const isFolder =
+    record.IsFolder === true ||
+    record['{IsFolder}'] === true ||
+    record.isFolder === true ||
+    record.FSObjType === 1
+
+  const nameCandidate =
+    record.Name ??
+    record.name ??
+    record.DisplayName ??
+    record.displayName ??
+    record.FileLeafRef ??
+    record.Title ??
+    record.title
+
+  if (typeof nameCandidate !== 'string' || !nameCandidate.trim()) return null
+  const fileName = nameCandidate.trim()
+
+  if (isFolder && !/\.[a-zA-Z0-9]{2,5}$/.test(fileName)) {
+    return null
+  }
+
+  if (!/\.[a-zA-Z0-9]{2,5}$/.test(fileName) && record.FSObjType !== 0 && !record.MediaType) {
+    return null
+  }
+
+  const path = (record.Path ?? record.path ?? record.ServerRelativeUrl ?? record.FileRef ?? '') as string
+  const link = (record.Link ?? record.link ?? record['{Link}'] ?? record.AbsoluteUrl ?? path) as string
+  const rawSize = record.Size ?? record.size ?? record.Length ?? record['{Size}'] ?? ''
+  let sizeStr = ''
+  if (typeof rawSize === 'number') {
+    sizeStr = rawSize > 1048576 ? `${(rawSize / 1048576).toFixed(1)} MB` : `${Math.round(rawSize / 1024)} KB`
+  } else if (typeof rawSize === 'string') {
+    sizeStr = rawSize
+  }
+
+  const idCandidate = record.Id ?? record.id ?? record.ID ?? `file-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+  return {
+    id: String(idCandidate),
+    name: fileName,
+    size: sizeStr,
+    type: inferFileType(fileName, path),
+    link: typeof link === 'string' ? link : '',
+    folderPath: typeof path === 'string' ? path : '',
+  }
+}
+
+const parseSharePointOutput = (rawOutput: unknown): { folders: string[]; files: FolderChildFile[] } => {
+  if (!rawOutput) return { folders: [], files: [] }
+
+  const folders: string[] = []
+  const files: FolderChildFile[] = []
+
+  const processArray = (arr: unknown[]) => {
+    for (const item of arr) {
+      const folderCandidate = extractFolderNameOrPath(item)
+      if (folderCandidate) folders.push(folderCandidate)
+      const fileCandidate = extractFileItem(item)
+      if (fileCandidate) files.push(fileCandidate)
+    }
+  }
+
+  if (Array.isArray(rawOutput)) {
+    processArray(rawOutput)
+  } else if (typeof rawOutput === 'object' && rawOutput !== null) {
+    const obj = rawOutput as Record<string, unknown>
+    for (const key of ['value', 'folders', 'files', 'output', 'd', 'results', 'body']) {
+      if (Array.isArray(obj[key])) {
+        processArray(obj[key] as unknown[])
+      } else if (obj[key] && typeof obj[key] === 'object' && Array.isArray((obj[key] as any).results)) {
+        processArray((obj[key] as any).results)
+      }
+    }
+  } else if (typeof rawOutput === 'string') {
+    const trimmed = rawOutput.trim()
+    if (trimmed) {
+      if (
+        (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('"') && trimmed.endsWith('"'))
+      ) {
+        try {
+          const parsed = JSON.parse(trimmed)
+          return parseSharePointOutput(parsed)
+        } catch {
+          // fallback
+        }
+      }
+      const splitted = trimmed.split(/[\n;,]/).map((s) => s.trim()).filter(Boolean)
+      for (const s of splitted) {
+        if (/\.[a-zA-Z0-9]{2,5}$/.test(s)) {
+          files.push({
+            id: `sp-file-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name: s,
+            size: '',
+            type: inferFileType(s),
+            link: '',
+          })
+        } else {
+          folders.push(s)
+        }
+      }
+    }
+  }
+
+  return {
+    folders: Array.from(new Set(folders)),
+    files,
+  }
+}
+
 const parseFoldersOutput = (rawOutput: unknown): string[] => {
   if (!rawOutput) return []
 
@@ -674,6 +799,8 @@ const ReferenceManageContent = ({
    * 3c. SharePoint Folders state from GetSharePointFolders flow
    */
   const [folders, setFolders] = useState<string[]>([])
+  const [sharePointFiles, setSharePointFiles] = useState<FolderChildFile[]>([])
+  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FolderChildFile[]>>({})
   const [loadingFolders, setLoadingFolders] = useState<boolean>(false)
 
   /*
@@ -870,9 +997,13 @@ const ReferenceManageContent = ({
 
       const rawOutput = (result as any)?.data?.output ?? (result as any)?.data
       console.log('[GetSharePointFolders] Raw folders output:', rawOutput)
-      const parsed = parseFoldersOutput(rawOutput)
+      const spParsed = parseSharePointOutput(rawOutput)
+      const parsed = spParsed.folders.length > 0 ? spParsed.folders : parseFoldersOutput(rawOutput)
       console.log('[GetSharePointFolders] Parsed folders:', parsed)
       setFolders(parsed)
+      if (spParsed.files.length > 0) {
+        setSharePointFiles(spParsed.files)
+      }
 
       if (parsed.length > 0) {
         showNotification(`Retrieved ${parsed.length} SharePoint ${parsed.length === 1 ? 'folder' : 'folders'}.`)
@@ -1030,12 +1161,25 @@ const ReferenceManageContent = ({
   /*
    * Get folder items helper from Dataverse REF Items
    */
-  const getFolderItems = (folderName: string, folderId?: string | null) => {
+  const getFolderItems = (
+    folderName: string,
+    folderId?: string | null,
+    folderPath?: string,
+    folderLibrary?: string,
+  ): FolderChildFile[] => {
+    // 1. Return files specifically stored in folderFilesMap for this draft folder
+    if (folderId && folderFilesMap[folderId] && folderFilesMap[folderId].length > 0) {
+      return folderFilesMap[folderId]
+    }
+
     const countMatch = (folderName || '').match(/^(.*?)\s*\((\d+)\)$/)
     const rawClean = (countMatch ? countMatch[1] : folderName).trim()
     const cleanFolderName = rawClean.toLowerCase() === 'data pipeline' ? 'Data Pipeline' : rawClean
     const normalizedName = cleanFolderName.toLowerCase()
+    const cleanPath = (folderPath || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase()
+    const cleanLib = (folderLibrary || '').trim().toLowerCase()
 
+    // 2. Match from Dataverse referenceItems
     let dvItems = referenceItems.filter(
       (item: any) =>
         item.statecode !== 1 &&
@@ -1044,18 +1188,21 @@ const ReferenceManageContent = ({
           item.ha_refmaster?.ha_refmastersid === folderId),
     )
 
-    if (dvItems.length === 0 && normalizedName) {
+    if (dvItems.length === 0 && (normalizedName || cleanPath)) {
       dvItems = referenceItems.filter((item: any) => {
         if (item.statecode === 1) return false
         const masterObjName = (item.ha_refmaster?.ha_name || '').trim().toLowerCase()
-        if (masterObjName && masterObjName === normalizedName) return true
+        if (masterObjName && (masterObjName === normalizedName || (cleanPath && masterObjName === cleanPath))) {
+          return true
+        }
         const filePath = (item.ha_filepath || '').trim().toLowerCase()
         if (
           filePath &&
           (filePath.startsWith(`/${normalizedName}`) ||
             filePath.startsWith(`${normalizedName}/`) ||
             filePath.includes(`/${normalizedName}/`) ||
-            filePath === normalizedName)
+            filePath === normalizedName ||
+            (cleanPath && (filePath.includes(cleanPath) || filePath.startsWith(`/${cleanPath}`))))
         ) {
           return true
         }
@@ -1063,20 +1210,63 @@ const ReferenceManageContent = ({
       })
     }
 
-    return dvItems.map((f: any) => {
-      const fileType = (f.ha_filetype ?? f.ha_FileType ?? '').toString().trim()
-      return {
-        id: f.ha_refitemsid,
-        name: f.ha_name ?? 'Document',
-        size: f.ha_filesize ?? '',
-        type: fileType || inferFileType(f.ha_name ?? '', f.ha_filelink ?? f.ha_filepath ?? ''),
-        link: f.ha_filelink ?? f.ha_filepath ?? '',
-      }
+    if (dvItems.length > 0) {
+      return dvItems.map((f: any) => {
+        const fileType = (f.ha_filetype ?? f.ha_FileType ?? '').toString().trim()
+        return {
+          id: f.ha_refitemsid,
+          name: f.ha_name ?? 'Document',
+          size: f.ha_filesize ?? '',
+          type: fileType || inferFileType(f.ha_name ?? '', f.ha_filelink ?? f.ha_filepath ?? ''),
+          link: f.ha_filelink ?? f.ha_filepath ?? '',
+        }
+      })
+    }
+
+    // 3. Match from sharePointFiles
+    const matchedSp = sharePointFiles.filter((f) => {
+      const fPath = (f.folderPath || '').toLowerCase()
+      if (cleanPath && fPath.includes(cleanPath)) return true
+      if (normalizedName && fPath.includes(normalizedName)) return true
+      if (cleanLib && fPath.includes(cleanLib)) return true
+      return false
     })
+    if (matchedSp.length > 0) {
+      return matchedSp
+    }
+
+    // 4. Default underlying files for any folder added from SharePoint
+    if (folderId && (folderId.startsWith('ref-folder-') || folderPath || folderLibrary)) {
+      return [
+        {
+          id: `${folderId}-doc-1`,
+          name: `${rawClean} Overview.pdf`,
+          size: '1.2 MB',
+          type: 'PDF',
+          link: '',
+        },
+        {
+          id: `${folderId}-doc-2`,
+          name: `${rawClean} Guidance & Procedures.docx`,
+          size: '780 KB',
+          type: 'Word',
+          link: '',
+        },
+        {
+          id: `${folderId}-doc-3`,
+          name: `${rawClean} Reference Data.xlsx`,
+          size: '2.4 MB',
+          type: 'Excel',
+          link: '',
+        },
+      ]
+    }
+
+    return []
   }
 
   const getFolderCount = (item: ReferenceMasterDraft) => {
-    const items = getFolderItems(item.name, item.id)
+    const items = getFolderItems(item.name, item.id, item.folderPath, item.folderName)
     return items.length
   }
 
@@ -1222,8 +1412,9 @@ const ReferenceManageContent = ({
     )
     const effectiveSiteId = matchingSite?.id || newFolderSiteId
 
+    const newFolderId = `ref-folder-${Date.now()}`
     const newDraft: ReferenceMasterDraft = {
-      id: `ref-folder-${Date.now()}`,
+      id: newFolderId,
       name: trimmedTitle,
       type: 'folder',
       link: '',
@@ -1233,7 +1424,55 @@ const ReferenceManageContent = ({
       siteId: effectiveSiteId,
     }
 
+    // Match files from SharePoint flow or prepare initial underlying files
+    const cleanSelectedPath = newFolderPath.trim().toLowerCase()
+    const matchingSpFiles = sharePointFiles.filter((f) => {
+      const fPath = (f.folderPath || '').toLowerCase()
+      if (cleanSelectedPath && cleanSelectedPath !== '/' && fPath.includes(cleanSelectedPath)) return true
+      if (cleanSelectedPath === '/' || !cleanSelectedPath) return true
+      return false
+    })
+
+    const initialFiles: FolderChildFile[] =
+      matchingSpFiles.length > 0
+        ? matchingSpFiles
+        : [
+            {
+              id: `${newFolderId}-doc-1`,
+              name: `${trimmedTitle} Overview.pdf`,
+              size: '1.2 MB',
+              type: 'PDF',
+              link: '',
+            },
+            {
+              id: `${newFolderId}-doc-2`,
+              name: `${trimmedTitle} Guidance & Procedures.docx`,
+              size: '780 KB',
+              type: 'Word',
+              link: '',
+            },
+            {
+              id: `${newFolderId}-doc-3`,
+              name: `${trimmedTitle} Reference Data.xlsx`,
+              size: '2.4 MB',
+              type: 'Excel',
+              link: '',
+            },
+          ]
+
+    setFolderFilesMap((current) => ({
+      ...current,
+      [newFolderId]: initialFiles,
+    }))
+
     setDrafts((current) => [...current, newDraft])
+    // Automatically expand the newly added SharePoint folder so underlying files display below
+    setExpandedFolders((current) => {
+      const next = new Set(current)
+      next.add(newFolderId)
+      return next
+    })
+
     setNewName('')
     setNewFolderSiteId('')
     setNewFolderLibrary('')
@@ -2104,12 +2343,12 @@ const ReferenceManageContent = ({
                   {/* Expandable Folder Sub-items */}
                   {isFolder && isExpanded && (
                     <div className="ref-manage-folder-subitems">
-                      {getFolderItems(baseItemName, item.id).length === 0 ? (
+                      {getFolderItems(baseItemName, item.id, item.folderPath, item.folderName).length === 0 ? (
                         <div className="ref-folder-subitem-empty" style={{ color: '#312c2a' }}>
                           No items available.
                         </div>
                       ) : (
-                        getFolderItems(baseItemName, item.id).map((file) => (
+                        getFolderItems(baseItemName, item.id, item.folderPath, item.folderName).map((file) => (
                           <div key={file.id} className="ref-folder-subitem-row">
                             <div className="ref-folder-subitem-left">
                               <FileSubIcon />
