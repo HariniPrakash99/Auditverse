@@ -2016,31 +2016,35 @@ const ReferenceManageContent = ({
                 ))}
               </select>
 
-              {/* 5. Folder Path Dropdown / Input */}
-              <input
-                type="text"
-                list="ref-manage-folders-datalist"
+              {/* 5. Folder Path Dropdown */}
+              <select
                 className={`ref-manage-folderpath-select ${newFolderPath ? 'has-value' : 'is-placeholder'}`}
-                placeholder={
-                  loadingFolders
-                    ? 'Loading folders...'
-                    : !newFolderLibrary
-                    ? 'Folder Path'
-                    : 'Folder Path'
-                }
                 value={newFolderPath}
                 onChange={(e) => setNewFolderPath(e.target.value)}
                 disabled={saving || loadingFolders || !newFolderLibrary}
                 aria-label="Folder Path"
-              />
-              <datalist id="ref-manage-folders-datalist">
-                <option value="/">/ (Root Folder)</option>
+              >
+                <option value="" disabled hidden>
+                  {loadingFolders
+                    ? 'Loading folders...'
+                    : !newFolderLibrary
+                    ? 'Folder Path'
+                    : folders.length === 0
+                    ? 'No folders found'
+                    : 'Folder Path'}
+                </option>
+                {newFolderLibrary && !loadingFolders && (
+                  <option value="/">/ (Root Folder)</option>
+                )}
+                {newFolderPath && newFolderPath !== '/' && !folders.includes(newFolderPath) && (
+                  <option value={newFolderPath}>{newFolderPath}</option>
+                )}
                 {folders.map((folder) => (
                   <option key={folder} value={folder}>
                     {folder}
                   </option>
                 ))}
-              </datalist>
+              </select>
             </>
           )}
 
