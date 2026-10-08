@@ -1167,19 +1167,14 @@ const ReferenceManageContent = ({
     folderPath?: string,
     folderLibrary?: string,
   ): FolderChildFile[] => {
-    // 1. Return files specifically stored in folderFilesMap for this draft folder
-    if (folderId && folderFilesMap[folderId] && folderFilesMap[folderId].length > 0) {
-      return folderFilesMap[folderId]
-    }
-
     const countMatch = (folderName || '').match(/^(.*?)\s*\((\d+)\)$/)
     const rawClean = (countMatch ? countMatch[1] : folderName).trim()
     const cleanFolderName = rawClean.toLowerCase() === 'data pipeline' ? 'Data Pipeline' : rawClean
     const normalizedName = cleanFolderName.toLowerCase()
-    const cleanPath = (folderPath || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase()
+    const cleanPath = (folderPath || '').replace(/^\/+/, '').trim().toLowerCase()
     const cleanLib = (folderLibrary || '').trim().toLowerCase()
 
-    // 2. Match from Dataverse referenceItems
+    // 1. Match from Dataverse referenceItems
     let dvItems = referenceItems.filter(
       (item: any) =>
         item.statecode !== 1 &&
@@ -1192,7 +1187,7 @@ const ReferenceManageContent = ({
       dvItems = referenceItems.filter((item: any) => {
         if (item.statecode === 1) return false
         const masterObjName = (item.ha_refmaster?.ha_name || '').trim().toLowerCase()
-        if (masterObjName && (masterObjName === normalizedName || (cleanPath && masterObjName === cleanPath))) {
+        if (masterObjName && (masterObjName === normalizedName || (cleanPath && masterObjName.includes(cleanPath)) || (cleanPath && cleanPath.includes(masterObjName)))) {
           return true
         }
         const filePath = (item.ha_filepath || '').trim().toLowerCase()
@@ -1223,7 +1218,7 @@ const ReferenceManageContent = ({
       })
     }
 
-    // 3. Match from sharePointFiles
+    // 2. Match from sharePointFiles
     const matchedSp = sharePointFiles.filter((f) => {
       const fPath = (f.folderPath || '').toLowerCase()
       if (cleanPath && fPath.includes(cleanPath)) return true
@@ -1233,6 +1228,11 @@ const ReferenceManageContent = ({
     })
     if (matchedSp.length > 0) {
       return matchedSp
+    }
+
+    // 3. Return files specifically stored in folderFilesMap for this draft folder
+    if (folderId && folderFilesMap[folderId] && folderFilesMap[folderId].length > 0) {
+      return folderFilesMap[folderId]
     }
 
     // 4. Default underlying files for any folder added from SharePoint
@@ -1412,24 +1412,29 @@ const ReferenceManageContent = ({
     )
     const effectiveSiteId = matchingSite?.id || newFolderSiteId
 
+    const rawFolderPath = newFolderPath.trim()
+    const effectiveFolderPath =
+      rawFolderPath && rawFolderPath !== '/'
+        ? (rawFolderPath.startsWith('/') ? rawFolderPath : `/${rawFolderPath}`)
+        : `/${trimmedTitle}`
+
     const newFolderId = `ref-folder-${Date.now()}`
     const newDraft: ReferenceMasterDraft = {
       id: newFolderId,
       name: trimmedTitle,
       type: 'folder',
       link: '',
-      folderName: libraryDisplayName.trim(),
-      folderParentPath: '',
-      folderPath: newFolderPath.trim(),
+      folderName: libraryDisplayName.trim() || trimmedTitle,
+      folderParentPath: libraryDisplayName.trim(),
+      folderPath: effectiveFolderPath,
       siteId: effectiveSiteId,
     }
 
-    // Match files from SharePoint flow or prepare initial underlying files
-    const cleanSelectedPath = newFolderPath.trim().toLowerCase()
+    // Match files from SharePoint flow or prepare initial underlying files using the effective folder path
+    const cleanSelectedPath = effectiveFolderPath.replace(/^\/+/, '').trim().toLowerCase()
     const matchingSpFiles = sharePointFiles.filter((f) => {
       const fPath = (f.folderPath || '').toLowerCase()
-      if (cleanSelectedPath && cleanSelectedPath !== '/' && fPath.includes(cleanSelectedPath)) return true
-      if (cleanSelectedPath === '/' || !cleanSelectedPath) return true
+      if (cleanSelectedPath && fPath.includes(cleanSelectedPath)) return true
       return false
     })
 
@@ -1694,7 +1699,16 @@ const ReferenceManageContent = ({
               name: trimmedTitle,
               link: editDraft.type === 'link' ? editDraft.link.trim() : '',
               folderName: editDraft.type === 'folder' ? libraryDisplayName.trim() : '',
-              folderPath: editDraft.type === 'folder' ? (editDraft.folderPath || '').trim() : '',
+              folderPath:
+                editDraft.type === 'folder'
+                  ? (() => {
+                      const raw = (editDraft.folderPath || '').trim()
+                      if (raw && raw !== '/') {
+                        return raw.startsWith('/') ? raw : `/${raw}`
+                      }
+                      return `/${trimmedTitle}`
+                    })()
+                  : '',
               siteId: editDraft.type === 'folder' ? (editDraft.siteId || '').trim() : '',
             }
           : item,
@@ -1986,35 +2000,31 @@ const ReferenceManageContent = ({
                 ))}
               </select>
 
-              {/* 5. Folder Path Dropdown */}
-              <select
+              {/* 5. Folder Path Dropdown / Input */}
+              <input
+                type="text"
+                list="ref-manage-folders-datalist"
                 className={`ref-manage-folderpath-select ${newFolderPath ? 'has-value' : 'is-placeholder'}`}
+                placeholder={
+                  loadingFolders
+                    ? 'Loading folders...'
+                    : !newFolderLibrary
+                    ? 'Folder Path'
+                    : 'Folder Path'
+                }
                 value={newFolderPath}
                 onChange={(e) => setNewFolderPath(e.target.value)}
                 disabled={saving || loadingFolders || !newFolderLibrary}
                 aria-label="Folder Path"
-              >
-                <option value="" disabled hidden>
-                  {loadingFolders
-                    ? 'Loading folders...'
-                    : !newFolderLibrary
-                    ? 'Folder Path'
-                    : folders.length === 0
-                    ? 'No folders found'
-                    : 'Folder Path'}
-                </option>
-                {newFolderLibrary && !loadingFolders && (
-                  <option value="/">/ (Root Folder)</option>
-                )}
-                {newFolderPath && newFolderPath !== '/' && !folders.includes(newFolderPath) && (
-                  <option value={newFolderPath}>{newFolderPath}</option>
-                )}
+              />
+              <datalist id="ref-manage-folders-datalist">
+                <option value="/">/ (Root Folder)</option>
                 {folders.map((folder) => (
                   <option key={folder} value={folder}>
                     {folder}
                   </option>
                 ))}
-              </select>
+              </datalist>
             </>
           )}
 
