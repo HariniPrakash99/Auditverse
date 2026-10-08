@@ -2384,15 +2384,29 @@ const ReferenceManageContent = ({
                                   {file.type}
                                 </span>
                               )}
-                              {file.link && (
+                              {file.link ? (
                                 <a
                                   href={file.link}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="ref-folder-subitem-link"
+                                  title="Open document"
+                                  aria-label={`Open ${file.name}`}
                                 >
                                   <ExternalSubLinkIcon />
                                 </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="ref-folder-subitem-link"
+                                  title="Open document"
+                                  aria-label={`Open ${file.name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                  }}
+                                >
+                                  <ExternalSubLinkIcon />
+                                </button>
                               )}
                             </div>
                           </div>

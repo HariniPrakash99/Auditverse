@@ -994,6 +994,11 @@
   align-items: center !important;
   justify-content: center !important;
   text-decoration: none !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  outline: none !important;
   transition: color 0.15s ease !important;
 }
 
